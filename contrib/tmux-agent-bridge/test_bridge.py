@@ -250,3 +250,40 @@ def test_load_groups_reads_json_and_rejects_bad_agents(tmp_path):
         config.load_groups(bad)
     with pytest.raises(SystemExit):
         config.load_groups(tmp_path / "missing.json")
+
+
+# ---- CLI passthrough: //cmd, /screen, /esc ----
+@pytest.fixture
+def term(wired, monkeypatch):
+    wired.keys, wired.screen = [], "  ⏵⏵ auto mode on\n 状 态 面 板"
+    backend = injector.Backend("Muxy", list, lambda pane: wired.screen,
+                               lambda p, t: None, lambda p, k: wired.keys.append((p, k)))
+    wired.found = injector.Found(injector.Target(backend, "P7", "✳ Claude Code"))
+    monkeypatch.setattr(wired.bridge, "SCREEN_SETTLE_SEC", 0)
+    return wired
+
+
+def test_double_slash_sends_cli_command_and_posts_screen(term):
+    term.bridge.process("c1", term.entry, "//status", [])
+    assert term.injected == [("P7", "/status")]
+    assert "状态面板" in term.sent[-1]  # Muxy's spaced CJK is collapsed
+
+
+def test_screen_and_esc_commands(term):
+    term.bridge.process("c1", term.entry, "/screen", [])
+    assert "状态面板" in term.sent[-1] and term.injected == []
+    term.found = injector.Found(term.found.target, blocked="esc to cancel")
+    term.bridge.process("c1", term.entry, "/esc", [])
+    assert term.keys == [("P7", "Escape")]
+
+
+def test_cli_commands_need_a_terminal_pane(term):
+    term.found = injector.Found()
+    term.bridge.process("c1", term.entry, "//compact", [])
+    assert term.injected == [] and term.turns == [] and "终端" in term.sent[-1]
+
+
+def test_double_slash_refused_while_modal_is_open(term):
+    term.found = injector.Found(term.found.target, blocked="needs review")
+    term.bridge.process("c1", term.entry, "//model", [])
+    assert term.injected == [] and "/esc" in term.sent[-1]

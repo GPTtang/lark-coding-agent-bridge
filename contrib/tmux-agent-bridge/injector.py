@@ -7,6 +7,7 @@ be read as keystrokes, e.g. a "t" could trust a hook. Such panes are reported as
 blocked instead of injected into.
 """
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 from typing import Callable, Optional
@@ -16,6 +17,8 @@ import tmux_inject
 from config import normalize_dir
 
 BOTTOM_LINES = 10   # modals and agent footers live at the bottom of the screen
+SCREEN_POST_LINES = 30   # how much of the screen /screen and //cmd post back
+_CJK = r"[\u2e80-\u9fff\u3000-\u303f\uff00-\uffef]"
 
 AGENT_MARKERS = {
     "claude": ("shift+tab to cycle", "⏵⏵", "esc to interrupt", "? for shortcuts",
@@ -36,6 +39,7 @@ class Backend:
     list_panes: Callable[[], list]          # -> [(pane id, title, cwd)]
     read_screen: Callable[[str], str]
     send: Callable[[str, str], None]
+    send_key: Optional[Callable[[str, str], None]] = None   # (pane, key name e.g. "Escape")
 
 
 @dataclass(frozen=True)
@@ -90,6 +94,25 @@ def inject(target: Target, text: str) -> None:
     target.backend.send(target.pane, text)
 
 
+def press_key(target: Target, key: str) -> None:
+    if target.backend.send_key is None:
+        raise RuntimeError(f"{target.backend.name} 不支持发送按键")
+    target.backend.send_key(target.pane, key)
+
+
+def collapse_cjk_spacing(text: str) -> str:
+    """Muxy's read-screen pads every wide character with one space; drop that padding."""
+    return re.sub(rf"({_CJK}) (?=\S)", r"\1", text)
+
+
+def screen_text(target: Target) -> str:
+    lines = [line.rstrip() for line in target.backend.read_screen(target.pane).splitlines()]
+    while lines and not lines[-1]:
+        lines.pop()
+    text = "\n".join(line.strip() if not line.strip() else line for line in lines[-SCREEN_POST_LINES:])
+    return collapse_cjk_spacing(re.sub(r"\n{3,}", "\n\n", text)).strip("\n")
+
+
 # ---- concrete backends ----
 
 def _tmux_panes() -> list:
@@ -101,8 +124,14 @@ def _tmux_screen(pane_id: str) -> str:
                           capture_output=True, text=True, timeout=10, check=True).stdout
 
 
-MUXY = Backend("Muxy", muxy_inject.list_panes, muxy_inject.read_screen, muxy_inject.send)
-TMUX = Backend("tmux", _tmux_panes, _tmux_screen, tmux_inject.inject)
+def _tmux_key(pane_id: str, key: str) -> None:
+    subprocess.run([tmux_inject.tmux_bin(), "send-keys", "-t", pane_id, key],
+                   capture_output=True, timeout=10, check=True)
+
+
+MUXY = Backend("Muxy", muxy_inject.list_panes, muxy_inject.read_screen, muxy_inject.send,
+               muxy_inject.send_key)
+TMUX = Backend("tmux", _tmux_panes, _tmux_screen, tmux_inject.inject, _tmux_key)
 
 
 def default_backends() -> list:

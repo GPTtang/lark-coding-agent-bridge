@@ -1,9 +1,12 @@
 """Long-running Feishu listener: group message -> agent turn in mapped dir -> reply.
 
 Group commands:
-  /status        show mapped dir, agent and current session id
-  /new <prompt>  start a fresh session instead of resuming
-  anything else  continue the dir's latest session
+  /status        show mapped dir, agent, session and where messages go
+  /new <prompt>  start a fresh headless session instead of resuming
+  //<cmd>        send /<cmd> to the CLI in the terminal pane, then post the screen
+  /screen        post the terminal pane's current screen
+  /esc           press Escape in the terminal pane (close a panel / dialog)
+  anything else  typed into the terminal pane, or a headless turn when there is none
 """
 import logging
 import os
@@ -16,13 +19,17 @@ from config import DIR_MAP_PATH, FEISHU_DOMAIN, LOG_PATH, load_json, require_env
 import media
 from feishu_api import download_image, send_text
 from runner import current_session, run_turn, with_image_note
-from injector import find_target, inject
+import time
+
+from injector import find_target, inject, press_key, screen_text
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s bridge %(levelname)s %(message)s",
                     handlers=[logging.FileHandler(LOG_PATH), logging.StreamHandler()])
 log = logging.getLogger("bridge")
 
 SEEN_LIMIT = 500
+SCREEN_SETTLE_SEC = 2.0          # let the CLI draw its panel before we capture the screen
+TERMINAL_COMMANDS = ("/screen", "/esc")
 _seen = OrderedDict()            # message_id dedupe (Feishu may redeliver)
 _chat_locks = {}                 # chat_id -> Lock, one agent turn per group at a time
 _state_lock = threading.Lock()
@@ -71,11 +78,38 @@ def _run_headless(chat_id: str, agent: str, directory: str, prompt: str, new: bo
         send_text(chat_id, reply)
 
 
+def _post_screen(chat_id: str, target) -> None:
+    send_text(chat_id, f"🖥 {target.label}\n\n{screen_text(target)}")
+
+
+def _terminal_command(chat_id: str, directory: str, agent: str, text: str) -> None:
+    """//cmd -> send /cmd to the CLI; /screen -> post screen; /esc -> press Escape."""
+    found = find_target(directory, agent)
+    if not found.target:
+        send_text(chat_id, f"这个命令需要终端窗格：Muxy / tmux 里没有找到运行 {agent} 的窗格。")
+        return
+    target = found.target
+    if text == "/esc":
+        press_key(target, "Escape")
+    elif text.startswith("//"):
+        if found.blocked:
+            send_text(chat_id, f"⚠️ {target.label} 里有待确认的弹窗（{found.blocked}），"
+                               "命令没有发送。可以先发 /screen 看看，或发 /esc 关掉它。")
+            return
+        inject(target, text[1:])
+    if text != "/screen":
+        time.sleep(SCREEN_SETTLE_SEC)
+    _post_screen(chat_id, target)
+
+
 def process(chat_id: str, entry: dict, text: str, images: list = ()) -> bool:
     """Handle one group message; returns True when it was typed into a terminal pane."""
     agent, directory = entry["agent"], entry["dir"]
     if text == "/status":
         send_text(chat_id, _status(directory, agent))
+        return False
+    if text in TERMINAL_COMMANDS or text.startswith("//"):
+        _terminal_command(chat_id, directory, agent, text)
         return False
     new = text.startswith("/new")
     prompt = text[len("/new"):].strip() if new else text
