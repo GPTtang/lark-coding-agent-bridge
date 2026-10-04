@@ -305,7 +305,7 @@ grep '"event":"enter"' ~/.lark-channel/profiles/<profile>/logs/bridge-$(date +%Y
 
 ## 实验性：在终端里实时看到群消息（tmux 注入）
 
-如果你主要在终端里用 Claude Code / Codex，只把飞书群当作远程入口，可以试试 [`contrib/tmux-agent-bridge`](contrib/tmux-agent-bridge/README.md)。它是一个独立的 Python 小程序，和本项目不共用代码和配置：每个群对应一个项目目录，群消息会直接打进 tmux 里正在运行的 agent，屏幕上实时可见；agent 每轮结束后，hook 把结果推回群里。agent 由 supervisor 自动拉起，退出后会自动重启，也支持图片。
+如果你主要在终端里用 Claude Code / Codex，只把飞书群当作远程入口，可以试试 [`contrib/tmux-agent-bridge`](contrib/tmux-agent-bridge/README.md)。它是一个独立的 Python 小程序，和本项目不共用代码和配置：每个群对应一个项目目录，群消息会直接打进 Muxy 或 tmux 里正在运行的 agent，屏幕上实时可见；agent 每轮结束后，hook 把结果推回群里。agent 由 supervisor 自动拉起，退出后会自动重启，也支持图片。
 
 ## 常见问题
 

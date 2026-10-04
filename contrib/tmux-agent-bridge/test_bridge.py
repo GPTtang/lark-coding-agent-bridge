@@ -174,35 +174,51 @@ def test_bridge_parks_image_then_sends_it_with_next_text(tmp_path, monkeypatch):
     assert not (tmp_path / "img_a.png").exists()  # cleaned up after the turn
 
 
-# ---- tmux injection ----
+# ---- terminal injection (Muxy / tmux) ----
+import injector
+
+
 @pytest.fixture
 def wired(tmp_path, monkeypatch):
     import bridge
-    calls = SimpleNamespace(sent=[], turns=[], injected=[], pane=None)
+    calls = SimpleNamespace(sent=[], turns=[], injected=[], found=injector.Found())
     monkeypatch.setattr(bridge, "send_text", lambda chat, text: calls.sent.append(text))
     monkeypatch.setattr(bridge, "run_turn", lambda agent, d, prompt, new=False, images=():
                         calls.turns.append((prompt, new)) or "ok")
-    monkeypatch.setattr(bridge, "injection_target", lambda d, agent: calls.pane)
-    monkeypatch.setattr(bridge, "inject", lambda pane, text: calls.injected.append((pane, text)))
+    monkeypatch.setattr(bridge, "find_target", lambda d, agent: calls.found)
+    monkeypatch.setattr(bridge, "inject",
+                        lambda target, text: calls.injected.append((target.pane, text)))
     monkeypatch.setattr(media, "INBOX_DIR", tmp_path / "inbox")
     calls.entry = {"agent": "codex", "dir": str(tmp_path), "name": "群"}
     calls.bridge = bridge
     return calls
 
 
-def test_message_is_injected_into_tmux_pane_when_one_runs_the_agent(wired, tmp_path):
-    wired.pane = "%7"
+def _found(pane="P7", blocked=None):
+    backend = injector.Backend("Muxy", list, str, lambda p, t: None)
+    return injector.Found(injector.Target(backend, pane, "✳ Claude Code"), blocked)
+
+
+def test_message_is_injected_into_terminal_pane_when_one_runs_the_agent(wired, tmp_path):
+    wired.found = _found()
     img = tmp_path / "a.png"
     img.write_bytes(b"png")
     wired.bridge.process("c1", wired.entry, "看看这个", [str(img)])
     assert wired.turns == []
     pane, text = wired.injected[0]
-    assert pane == "%7" and text.startswith("看看这个") and str(img) in text
-    assert "%7" in wired.sent[-1]
+    assert pane == "P7" and text.startswith("看看这个") and str(img) in text
+    assert "Muxy" in wired.sent[-1]
+
+
+def test_blocked_pane_gets_nothing_typed_and_group_is_told(wired):
+    wired.found = _found(blocked="needs review")
+    wired.bridge.process("c1", wired.entry, "t", [])
+    assert wired.injected == [] and wired.turns == []
+    assert "弹窗" in wired.sent[-1] and "needs review" in wired.sent[-1]
 
 
 def test_injected_images_are_kept_for_the_terminal_session(wired, tmp_path, monkeypatch):
-    wired.pane = "%7"
+    wired.found = _found()
     monkeypatch.setattr(wired.bridge, "download_image",
                         lambda mid, key, dest: str(tmp_path / f"{key}.png"))
     (tmp_path / "k.png").write_bytes(b"png")
@@ -212,16 +228,16 @@ def test_injected_images_are_kept_for_the_terminal_session(wired, tmp_path, monk
 
 def test_falls_back_to_headless_without_pane_and_new_is_always_headless(wired):
     wired.bridge.process("c1", wired.entry, "继续", [])
-    wired.pane = "%7"
+    wired.found = _found()
     wired.bridge.process("c1", wired.entry, "/new 从头开始", [])
     assert wired.turns == [("继续", False), ("从头开始", True)]
     assert wired.injected == []
 
 
-def test_status_reports_injection_mode(wired):
-    wired.pane = "%7"
+def test_status_reports_injection_target(wired):
+    wired.found = _found()
     wired.bridge.process("c1", wired.entry, "/status", [])
-    assert "tmux" in wired.sent[-1] and "%7" in wired.sent[-1]
+    assert "Muxy" in wired.sent[-1] and "Claude Code" in wired.sent[-1]
 
 
 def test_load_groups_reads_json_and_rejects_bad_agents(tmp_path):

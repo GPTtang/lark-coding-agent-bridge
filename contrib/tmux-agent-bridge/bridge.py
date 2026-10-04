@@ -16,7 +16,7 @@ from config import DIR_MAP_PATH, FEISHU_DOMAIN, LOG_PATH, load_json, require_env
 import media
 from feishu_api import download_image, send_text
 from runner import current_session, run_turn, with_image_note
-from tmux_inject import inject, injection_target
+from injector import find_target, inject
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s bridge %(levelname)s %(message)s",
                     handlers=[logging.FileHandler(LOG_PATH), logging.StreamHandler()])
@@ -50,8 +50,13 @@ def chat_lock(chat_id: str) -> threading.Lock:
 
 def _status(directory: str, agent: str) -> str:
     sid = current_session(directory) or "(无记录，将使用该目录最近的会话)"
-    pane = injection_target(directory, agent)
-    mode = f"📺 注入到 tmux {pane}（终端实时可见）" if pane else "🕶 后台运行（没有找到运行该 agent 的 tmux 窗口）"
+    found = find_target(directory, agent)
+    if found.target and found.blocked:
+        mode = f"⚠️ {found.target.label} 正被弹窗挡住（{found.blocked}），消息暂不发送"
+    elif found.target:
+        mode = f"📺 发送到 {found.target.label}（终端实时可见）"
+    else:
+        mode = "🕶 后台运行（Muxy / tmux 里没有找到运行该 agent 的窗格）"
     return f"📂 {directory}\n🤖 {agent}\n🧵 session: {sid}\n{mode}"
 
 
@@ -67,7 +72,7 @@ def _run_headless(chat_id: str, agent: str, directory: str, prompt: str, new: bo
 
 
 def process(chat_id: str, entry: dict, text: str, images: list = ()) -> bool:
-    """Handle one group message; returns True when it was injected into tmux."""
+    """Handle one group message; returns True when it was typed into a terminal pane."""
     agent, directory = entry["agent"], entry["dir"]
     if text == "/status":
         send_text(chat_id, _status(directory, agent))
@@ -77,10 +82,14 @@ def process(chat_id: str, entry: dict, text: str, images: list = ()) -> bool:
     if not prompt:
         send_text(chat_id, "用法：/new <要做的事>")
         return False
-    pane = None if new else injection_target(directory, agent)
-    if pane:
-        inject(pane, with_image_note(prompt, images))
-        send_text(chat_id, f"⌨️ 已发送到终端 tmux {pane}，{agent} 完成后会把结果推送到群里")
+    found = None if new else find_target(directory, agent)
+    if found and found.target and found.blocked:
+        send_text(chat_id, f"⚠️ {found.target.label} 里有待确认的弹窗（{found.blocked}），"
+                           "这条消息没有发送。请先在终端里处理弹窗，再重发。")
+        return False
+    if found and found.target:
+        inject(found.target, with_image_note(prompt, images))
+        send_text(chat_id, f"⌨️ 已发送到 {found.target.label}，{agent} 完成后会把结果推送到群里")
         return True
     _run_headless(chat_id, agent, directory, prompt, new, images)
     return False

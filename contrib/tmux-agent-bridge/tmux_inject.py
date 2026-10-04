@@ -17,7 +17,6 @@ BUFFER = "feishu-bridge"
 PASTE_SETTLE_SEC = 0.3          # let the TUI finish handling the paste before Enter
 TMUX_TIMEOUT_SEC = 10
 TMUX_FALLBACKS = ("/opt/homebrew/bin/tmux", "/usr/local/bin/tmux")
-INJECT_MODE = os.environ.get("FEISHU_INJECT_MODE", "auto")   # auto | off
 
 # argv[0] patterns; Claude's native binary is named after its version number.
 _AGENT_PATTERNS = {
@@ -118,9 +117,3 @@ def inject(pane_id: str, text: str) -> None:
     time.sleep(PASTE_SETTLE_SEC)
     _tmux(["send-keys", "-t", pane_id, "Enter"])
 
-
-def injection_target(directory: str, agent: str):
-    """Pane to inject into, or None when injection is off or no matching pane exists."""
-    if INJECT_MODE == "off":
-        return None
-    return find_pane(directory, agent)
