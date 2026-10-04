@@ -277,7 +277,21 @@ describe('profile schema', () => {
       maxBytes: 100 * 1024 * 1024,
       maxFileBytes: 25 * 1024 * 1024,
       imageMaxBytes: 25 * 1024 * 1024,
+      awaitTextMs: 5 * 60 * 1000,
     });
+  });
+
+  it('bounds attachments.awaitTextMs and keeps 0 as "disabled"', () => {
+    const base = createDefaultProfileConfig({ agentKind: 'claude', accounts: { app } });
+    const withAwait = (awaitTextMs: unknown) =>
+      normalizeProfileConfig({ ...base, attachments: { ...base.attachments, awaitTextMs } })
+        .attachments.awaitTextMs;
+
+    expect(withAwait(0)).toBe(0);
+    expect(withAwait(90_000)).toBe(90_000);
+    expect(withAwait(10 * 60 * 60 * 1000)).toBe(30 * 60 * 1000);
+    expect(withAwait(-5)).toBe(0);
+    expect(withAwait('oops')).toBe(5 * 60 * 1000);
   });
 
   it('keeps legacy Codex binary metadata and user-home defaults without keeping public flags', () => {

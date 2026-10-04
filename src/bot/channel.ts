@@ -61,6 +61,7 @@ import { handleCommentMention } from './comments';
 import { recordRunSessionEvent, startRunFlow } from './run-flow';
 import { commandSessionCatalogIdentity } from './session-catalog-identity';
 import { startKeepalive } from './keepalive';
+import { AttachmentHold, isAttachmentOnly, stripAttachmentRefs } from './attachment-hold';
 import { PendingQueue } from './pending-queue';
 import { ProcessPool } from './process-pool';
 import { fetchQuotedContext, fetchTopicContext, type QuotedContext } from './quote';
@@ -329,6 +330,14 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
     });
   });
 
+  // Attachment-only messages wait here for the follow-up text (see
+  // attachment-hold.ts). On expiry they enter the normal debounce queue, so the
+  // attachment is still processed on its own — same as before this hold existed.
+  const holds = new AttachmentHold((scope, held) => {
+    log.info('intake', 'attachment-hold-expired', { scope, count: held.length });
+    for (const heldMsg of held) pending.push(scope, heldMsg);
+  });
+
   // Counter for stdout reconnect escalation; reset on `reconnected`.
   let consecutiveReconnects = 0;
 
@@ -343,6 +352,7 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
           workspaces,
           activeRuns,
           pending,
+          holds,
           msg,
           controls,
           chatModeCache,
@@ -519,6 +529,7 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
       meetingManager?.dispose();
       controls.meeting = undefined;
       pending.cancelAll();
+      holds.cancelAll();
       const [disconnectResult, stopAllResult, ...flushResults] = await Promise.allSettled([
         channel.disconnect(),
         activeRuns.stopAll(),
@@ -611,6 +622,23 @@ async function sendForwardFetchFailedHint(
   }
 }
 
+async function sendAttachmentHeldHint(
+  channel: LarkChannel,
+  chatId: string,
+  replyToMessageId: string,
+  awaitTextMs: number,
+): Promise<void> {
+  const minutes = Math.max(1, Math.round(awaitTextMs / 60_000));
+  const text =
+    '📎 已收到附件，请接着发文字说明要做什么。' +
+    `${minutes} 分钟内没有补充的话，我会直接查看附件。`;
+  try {
+    await channel.send(chatId, { text }, { replyTo: replyToMessageId });
+  } catch {
+    await channel.send(chatId, { text });
+  }
+}
+
 interface IntakeDeps {
   channel: LarkChannel;
   agent: AgentAdapter;
@@ -619,6 +647,7 @@ interface IntakeDeps {
   workspaces: WorkspaceStore;
   activeRuns: ActiveRuns;
   pending: PendingQueue;
+  holds: AttachmentHold;
   msg: NormalizedMessage;
   controls: Controls;
   chatModeCache: ChatModeCache;
@@ -642,6 +671,7 @@ async function intakeMessage(deps: IntakeDeps): Promise<void> {
     workspaces,
     activeRuns,
     pending,
+    holds,
     msg,
     controls,
     chatModeCache,
@@ -779,9 +809,29 @@ async function intakeMessage(deps: IntakeDeps): Promise<void> {
   });
   if (handled) {
     const dropped = pending.cancel(scope);
-    log.info('intake', 'command', { scope, droppedPending: dropped.length });
+    const droppedHeld = holds.release(scope);
+    log.info('intake', 'command', {
+      scope,
+      droppedPending: dropped.length,
+      droppedHeld: droppedHeld.length,
+    });
     return;
   }
+
+  // A bare image/file usually comes right before the question about it. Park
+  // it until the next text message instead of running on the attachment alone.
+  const awaitTextMs = controls.profileConfig.attachments.awaitTextMs;
+  if (awaitTextMs > 0 && isAttachmentOnly(emsg) && senderTypeOf(emsg) !== 'bot') {
+    const heldCount = holds.hold(scope, emsg, awaitTextMs);
+    log.info('intake', 'attachment-held', { scope, heldCount, awaitTextMs });
+    if (heldCount === 1) {
+      void sendAttachmentHeldHint(channel, emsg.chatId, emsg.messageId, awaitTextMs).catch((err) =>
+        log.warn('intake', 'attachment-held-hint-failed', { err: String(err) }),
+      );
+    }
+    return;
+  }
+  for (const heldMsg of holds.release(scope)) pending.push(scope, heldMsg);
 
   const size = pending.push(scope, emsg);
   log.info('intake', 'queued', { scope, queueSize: size, debounceMs: DEBOUNCE_MS });
@@ -1909,23 +1959,6 @@ function replyQuoteTargetForMessage(
     return undefined;
   }
   return replyTo;
-}
-
-function stripAttachmentRefs(text: string, fileKeys: string[]): string {
-  if (!text || fileKeys.length === 0) return text;
-  let out = text;
-  for (const key of fileKeys) {
-    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    out = out.replace(new RegExp(`!?\\[[^\\]]*\\]\\(${escaped}\\)`, 'g'), '');
-    out = out.replace(
-      new RegExp(
-        `<\\s*(?:file|image|img|audio|video|media|folder)\\b[^>]*\\bkey\\s*=\\s*["']${escaped}["'][^>]*>`,
-        'gi',
-      ),
-      '',
-    );
-  }
-  return out.replace(/\n{3,}/g, '\n\n');
 }
 
 function toPromptQuote(q: QuotedContext): BridgePromptQuotedMessage {

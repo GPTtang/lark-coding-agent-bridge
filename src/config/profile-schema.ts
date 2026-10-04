@@ -58,7 +58,15 @@ export interface AttachmentConfig {
   imageMaxBytes: number;
   cacheTtlMs: number;
   cacheMaxBytes: number;
+  /**
+   * How long an attachment-only message (bare image/file) waits for a
+   * follow-up text before running on its own. 0 disables the hold.
+   */
+  awaitTextMs: number;
 }
+
+export const ATTACHMENT_AWAIT_TEXT_DEFAULT_MS = 5 * 60 * 1000;
+export const ATTACHMENT_AWAIT_TEXT_MAX_MS = 30 * 60 * 1000;
 
 export type CommentConfig = Record<string, never>;
 
@@ -291,6 +299,12 @@ export function normalizeProfileConfig(input: unknown): ProfileConfig {
       imageMaxBytes: numberOr(raw.attachments?.imageMaxBytes, 25 * 1024 * 1024),
       cacheTtlMs: numberOr(raw.attachments?.cacheTtlMs, 24 * 60 * 60 * 1000),
       cacheMaxBytes: numberOr(raw.attachments?.cacheMaxBytes, 512 * 1024 * 1024),
+      awaitTextMs: clampNumber(
+        raw.attachments?.awaitTextMs,
+        0,
+        ATTACHMENT_AWAIT_TEXT_MAX_MS,
+        ATTACHMENT_AWAIT_TEXT_DEFAULT_MS,
+      ),
     },
     comments,
     meeting,
