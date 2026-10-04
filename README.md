@@ -303,6 +303,10 @@ Each line carries `chatId` (group / DM id) and `senderId` (user `open_id`). Afte
 
 Cloud-doc comments do not need a separate workspace binding or document allowlist. In supported document comments, mention the bot and the bridge replies in the same thread. Comment runs reuse the document session key and fall back to the user home directory when no document cwd was previously recorded.
 
+## Experimental: see group messages live in your terminal (tmux injection)
+
+If you mostly work in a terminal and only use a Feishu group as a remote entry point, try [`contrib/tmux-agent-bridge`](contrib/tmux-agent-bridge/README.md). It is a standalone Python helper that shares no code or config with this project. Each group maps to a project directory, and its messages are typed straight into the Claude Code / Codex session running in tmux, so you watch the turn live. Hooks post each turn's result back to the group. A supervisor auto-starts the agents and restarts them when they exit. Images are supported. Its docs are in Chinese.
+
 ## FAQ
 
 **The bot stays silent or the local CLI never replies.** Usually the local `claude` or `codex` CLI is not logged in, or the current session points to a working directory that no longer exists. Send `/status` to inspect; `/new` often fixes it by starting a fresh session.

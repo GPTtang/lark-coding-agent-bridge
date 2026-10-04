@@ -1,0 +1,11 @@
+.env
+groups.json
+dir_map.json
+sessions.json
+tmux_sessions.json
+tmux.paused
+inbox/
+*.log
+.venv/
+__pycache__/
+.pytest_cache/
