@@ -17,7 +17,17 @@
 - **结果回推**：通过 Claude Code / Codex 的 hook 实现：Stop 时推送本轮结果，Notification 时推送提醒。
 - **图片**：图片、富文本里的图片都会下载到本地交给 agent，Codex 用 `--image`。只发图片时先暂存起来，等下一条文字到了再一起处理。
 - **Codex 会话被占用**：Codex 续接时遇到 `already has an active writer`，会自动改用新会话处理。
-- **群内命令**：`/status` 查看目录、agent、session 和当前模式；`/new <任务>` 新开一个会话。只执行群主（以及 `FEISHU_ALLOWED_OPEN_IDS` 里的人）发的消息。
+- **群内命令**（只执行群主以及 `FEISHU_ALLOWED_OPEN_IDS` 里的人发的消息）：
+
+  | 命令 | 作用 |
+  |---|---|
+  | `/status` | 显示目录、agent、session，以及消息会发到哪里 |
+  | `/new <任务>` | 在后台新开一个会话来执行 |
+  | `//<命令>` | 把 `/<命令>` 原样发给终端里的 CLI（如 `//status`、`//model`、`//compact`），2 秒后把终端画面发回群里 |
+  | `/screen` | 把终端当前画面发回群里 |
+  | `/esc` | 在终端里按一次 Esc，关掉面板或弹窗 |
+
+  CLI 斜杠命令不算一轮对话，不会触发 Stop hook，所以执行结果用截屏发回群里。像 `//status` 这样会打开面板的命令执行完后，面板会被识别为弹窗，后面的消息会暂停发送，发 `/esc` 关掉面板即可。这些命令都需要 Muxy 或 tmux 窗格。
 
 ## 安装（macOS）
 

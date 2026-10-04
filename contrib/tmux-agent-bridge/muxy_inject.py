@@ -61,3 +61,8 @@ def send(pane_id: str, text: str) -> None:
     _cli("send", "--pane", pane_id, flat)
     time.sleep(SUBMIT_SETTLE_SEC)
     _cli("send-keys", "--pane", pane_id, "Enter")
+
+
+def send_key(pane_id: str, key: str) -> None:
+    """Special key by name: Escape, Enter, Tab, Ctrl+C."""
+    _cli("send-keys", "--pane", pane_id, key)

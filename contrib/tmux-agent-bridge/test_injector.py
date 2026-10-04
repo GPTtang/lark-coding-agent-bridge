@@ -88,3 +88,12 @@ def test_muxy_inject_flattens_newlines_and_presses_enter(monkeypatch):
 def test_muxy_unavailable_lists_no_panes(monkeypatch):
     monkeypatch.setattr(muxy_inject, "available", lambda: False)
     assert muxy_inject.list_panes() == []
+
+
+def test_collapse_cjk_spacing():
+    assert injector.collapse_cjk_spacing("目 前 还 没 连 上 ： ok 1. Yes") == "目前还没连上：ok 1. Yes"
+
+
+def test_screen_text_squeezes_blank_runs():
+    backend = injector.Backend("Muxy", list, lambda p: "a\n\n\n\n\nb\n\n", lambda p, t: None)
+    assert injector.screen_text(injector.Target(backend, "P", "t")) == "a\n\nb"
