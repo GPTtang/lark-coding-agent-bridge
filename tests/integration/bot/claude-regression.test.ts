@@ -63,6 +63,19 @@ describe('Claude IM regression boundaries', () => {
     expect(source).toContain('!msg.mentionedBot');
     expect(source).toContain('msg.chatType !== \'p2p\'');
   });
+
+  it('parks attachment-only messages until the follow-up text, after access and command gates', async () => {
+    const source = await readFile(join(process.cwd(), 'src/bot/channel.ts'), 'utf8');
+    const intake = source.slice(source.indexOf('async function intakeMessage('));
+
+    const holdAt = intake.indexOf('isAttachmentOnly(emsg)');
+    expect(holdAt).toBeGreaterThan(intake.indexOf('tryHandleCommand('));
+    expect(holdAt).toBeGreaterThan(intake.indexOf('canUseGroup('));
+    expect(intake).toContain("senderTypeOf(emsg) !== 'bot'");
+    expect(intake.indexOf('holds.release(scope)) pending.push')).toBeLessThan(
+      intake.indexOf('const size = pending.push(scope, emsg)'),
+    );
+  });
 });
 
 function msg(messageId: string, content: string): NormalizedMessage {

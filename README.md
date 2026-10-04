@@ -14,7 +14,7 @@ For a product walkthrough, see the [Feishu document](https://larkcommunity.feish
 - **Session continuity**: each chat, topic, or document comment thread keeps its own session.
 - **Queueing and batching**: messages sent in quick succession are handled together; messages sent during a run are queued for the next turn, while commands like `/new`, `/cd`, `/ws use`, and `/stop` can interrupt the current task.
 - **Multiple workspaces**: use `/cd` to switch the current project, and `/ws` to save and reuse common project directories.
-- **Images and files**: send them to the bot directly, and the bridge downloads them locally for the agent.
+- **Images and files**: send them to the bot directly, and the bridge downloads them locally for the agent. A bare image or file with no text is held until your next text message, so the screenshot and the question about it run together; the bot replies with a short hint while it waits. After 5 minutes without text the attachment runs on its own. Tune this with `attachments.awaitTextMs` in the profile (milliseconds, max 30 minutes, `0` disables the hold).
 - **Interactive cards**: `/help`, `/ws list`, and `/status` return cards with clickable buttons.
 
 ## Prerequisites
