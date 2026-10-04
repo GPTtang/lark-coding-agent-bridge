@@ -305,7 +305,7 @@ Cloud-doc comments do not need a separate workspace binding or document allowlis
 
 ## Experimental: see group messages live in your terminal (tmux injection)
 
-If you mostly work in a terminal and only use a Feishu group as a remote entry point, try [`contrib/tmux-agent-bridge`](contrib/tmux-agent-bridge/README.md). It is a standalone Python helper that shares no code or config with this project. Each group maps to a project directory, and its messages are typed straight into the Claude Code / Codex session running in tmux, so you watch the turn live. Hooks post each turn's result back to the group. A supervisor auto-starts the agents and restarts them when they exit. Images are supported. Its docs are in Chinese.
+If you mostly work in a terminal and only use a Feishu group as a remote entry point, try [`contrib/tmux-agent-bridge`](contrib/tmux-agent-bridge/README.md). It is a standalone Python helper that shares no code or config with this project. Each group maps to a project directory, and its messages are typed straight into the Claude Code / Codex session running in a Muxy or tmux pane, so you watch the turn live. Hooks post each turn's result back to the group. A supervisor auto-starts the agents and restarts them when they exit. Images are supported. Its docs are in Chinese.
 
 ## FAQ
 

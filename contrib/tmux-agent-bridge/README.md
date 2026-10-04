@@ -1,13 +1,19 @@
 # tmux-agent-bridge（实验性，Python）
 
-一个独立的轻量桥接程序：每个飞书 / Lark 群对应一个本机项目目录和一个 agent（Claude Code 或 Codex），**群里的消息会直接打进终端里正在运行的 agent**，屏幕上实时可见；agent 每轮结束后，结果自动推回群里。
+一个独立的轻量桥接程序：每个飞书 / Lark 群对应一个本机项目目录和一个 agent（Claude Code 或 Codex），**群里的消息会直接打进终端里正在运行的 agent**（[Muxy](https://github.com/muxy-app/muxy) 窗格或 tmux 窗格），屏幕上实时可见；agent 每轮结束后，结果自动推回群里。
 
 它和主项目 `lark-channel-bridge` 互相独立，不共用代码和配置。主项目以无界面方式运行 agent，用流式卡片回复；这个程序适合「人主要在终端里干活，群只是远程入口」的用法。
 
 ## 功能
 
-- **tmux 注入**：如果群对应的目录里有一个 tmux 窗口正在运行这个 agent，就把消息用括号粘贴（bracketed paste）发进去再回车，多行消息也只会提交一次。找不到这样的窗口时，回退为无界面运行（`claude -p --resume` / `codex exec resume`）。
-- **自动拉起 + 自动恢复**：supervisor 每 30 秒运行一次，保证每个群都有一个 `lark-<群名>` tmux 会话在运行 agent。agent 退出后，会续接这个 tmux 会话自己的 session 重新拉起。
+- **终端注入**：按以下顺序找发送目标：
+  1. **Muxy 窗格**：通过 Muxy 自带的 CLI（`list-panes` / `read-screen` / `send` / `send-keys`）查找。Muxy 的协议一行就是一条命令，所以多行消息会被合并成一行。
+  2. **tmux 窗格**：用括号粘贴（bracketed paste）加回车发送，多行消息也只会提交一次。
+  3. 都找不到时，回退为无界面运行（`claude -p --resume` / `codex exec resume`）。
+
+  窗格要满足两个条件才会被选中：工作目录是该群对应的目录，屏幕底部能看到对应 agent 的界面。`FEISHU_INJECT_MODE` 可以设为 `auto`（默认）、`muxy`、`tmux` 或 `off`。
+- **弹窗保护**：发送前先读屏幕底部，看到权限确认、hook 审核、更新提示这类弹窗时不发送，并在群里提示。否则粘贴进去的文字会被当成按键，比如一个 `t` 就可能误点「信任 hook」。
+- **自动拉起 + 自动恢复（可选，tmux）**：supervisor 每 30 秒运行一次，保证每个群都有一个 `lark-<群名>` tmux 会话在运行 agent。agent 退出后，会续接这个 tmux 会话自己的 session 重新拉起。
 - **结果回推**：通过 Claude Code / Codex 的 hook 实现：Stop 时推送本轮结果，Notification 时推送提醒。
 - **图片**：图片、富文本里的图片都会下载到本地交给 agent，Codex 用 `--image`。只发图片时先暂存起来，等下一条文字到了再一起处理。
 - **Codex 会话被占用**：Codex 续接时遇到 `already has an active writer`，会自动改用新会话处理。
@@ -15,7 +21,7 @@
 
 ## 安装（macOS）
 
-前置：Python 3.10+、tmux、已登录的 `claude` 和 / 或 `codex`。
+前置：Python 3.10+、已登录的 `claude` 和 / 或 `codex`；终端注入需要 [Muxy](https://github.com/muxy-app/muxy) 或 tmux（只用后台运行时两者都不需要）。
 
 ```bash
 cd contrib/tmux-agent-bridge
@@ -61,6 +67,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
 - 关闭注入、全部改为无界面运行：在 `.env` 里写 `FEISHU_INJECT_MODE=off`，然后重启服务。
+- 只用 Muxy、不需要 tmux 自动拉起：运行 `tmux_supervisor.py stop` 即可（暂停后不会再新建 tmux 会话）。
 - tmux 里的 Codex 启动时带 `-c check_for_update_on_startup=false`，不会卡在更新提示上；全局配置不变。
 - 你在终端里正打着字时，群消息会插进来，和没打完的内容拼在一起。
 - 运行时文件（`.env`、`groups.json`、`dir_map.json`、`sessions.json`、`tmux_sessions.json`、`inbox/`、日志）都不进 git。
