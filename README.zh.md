@@ -303,6 +303,10 @@ grep '"event":"enter"' ~/.lark-channel/profiles/<profile>/logs/bridge-$(date +%Y
 
 云文档评论不再需要单独绑定工作目录或维护文档白名单。支持的文档评论里 @bot 后，bridge 会在同一个评论线程里回复。评论运行复用文档级 session key；没有记录过文档 cwd 时回退到用户 home 目录。
 
+## 实验性：在终端里实时看到群消息（tmux 注入）
+
+如果你主要在终端里用 Claude Code / Codex，只把飞书群当作远程入口，可以试试 [`contrib/tmux-agent-bridge`](contrib/tmux-agent-bridge/README.md)。它是一个独立的 Python 小程序，和本项目不共用代码和配置：每个群对应一个项目目录，群消息会直接打进 tmux 里正在运行的 agent，屏幕上实时可见；agent 每轮结束后，hook 把结果推回群里。agent 由 supervisor 自动拉起，退出后会自动重启，也支持图片。
+
 ## 常见问题
 
 **bot 没反应 / agent 不回复**：通常是本机 `claude` 或 `codex` CLI 没登录，或者当前会话指向了不存在的工作目录。发 `/status` 看当前状态；`/new` 重开会话往往就好。

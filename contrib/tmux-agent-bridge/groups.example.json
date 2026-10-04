@@ -1,0 +1,4 @@
+{
+ "日语音频群": {"dir": "~/projects/japanese-tts", "agent": "claude"},
+ "twitter群": {"dir": "~/projects/twitter-agent", "agent": "codex"}
+}
